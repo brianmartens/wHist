@@ -26,10 +26,9 @@ var extraloc = map[string]string{
 }
 
 const GeoLoc, ST, Lat, Lon int = 0, 1, 2, 3
-const WunAPIKEY string = "25b665b61fc12d68"
-const GooAPIKEY string = "AIzaSyCXaZtZAIcsnkt41OtlpoXZRNiui68ioZs"
-const NOAA_API string = "OdsYVFMjAJYIcopJfmnPDCLhWmMgHFOY"
-const GooUrl string = "https://www.googleapis.com/customsearch/v1?"
+const WunAPIKEY string = ""
+const GooAPIKEY string = ""
+const NOAA_API string = ""
 const WunHistBase string = "https://www.wunderground.com"
 const wunHQ string = "DailyHistory.html?"
 const wunSearchBase = "https://www.wunderground.com/cgi-bin/findweather/getForecast?query="
