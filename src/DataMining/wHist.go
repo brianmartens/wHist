@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -26,12 +28,9 @@ var extraloc = map[string]string{
 }
 
 const GeoLoc, ST, Lat, Lon int = 0, 1, 2, 3
-const WunAPIKEY string = ""
-const GooAPIKEY string = ""
-const NOAA_API string = ""
 const WunHistBase string = "https://www.wunderground.com"
 const wunHQ string = "DailyHistory.html?"
-const wunSearchBase string = "https://www.wunderground.com/cgi-bin/findweather/getForecast?query="
+const wunSearchBase = "https://www.wunderground.com/cgi-bin/findweather/getForecast?query="
 const CSE string = "mysearch-1494207888632"
 const CSE2 string = "954822024567"
 const tableBegin string = "<div id=\"observations_details\" class=\"high-res\" >"
@@ -50,7 +49,7 @@ func (cday *CalendarDay) getHeaders() []string {
 }
 
 func getLocations() map[string][]string {
-	fileBytes, err := ioutil.ReadFile(ROOT + "/GEO_LOCATIONS.csv")
+	fileBytes, err := ioutil.ReadFile(ROOT + "/locations.csv")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -156,7 +155,7 @@ func getUrl(Geolocation string) string {
 			return string(fileBytes)
 		}
 	} else {
-		os.Remove(ROOT + "/data/" + Geolocation + "/url.txt")
+
 		return string(gzipBytes)
 	}
 }
@@ -305,7 +304,6 @@ func createWeather(client *http.Client, url, Geolocation string) (error, string)
 			}
 
 		}
-
 	}
 	return nil, "net"
 }
@@ -317,50 +315,49 @@ func createUrl(client *http.Client, Geolocation string, record []string) string 
 	}
 
 	var url string = wunSearchBase + record[Lat] + "," + record[Lon]
-
 	search, err := client.Get(url)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("get error =" + err.Error())
 	}
 	sbytes, err := ioutil.ReadAll(search.Body)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("search body read error = " + err.Error())
 	}
 	url = ""
-	initSplit := strings.Split(string(sbytes), "id=\"city-nav-history\"")
-	if len(initSplit) > 0 {
-		href := strings.Split(initSplit[0], "<li><a href=\"/history/airport")
-		if len(href) > 1 {
-			qSplit := strings.Split(href[1], "?")
-			if len(qSplit) > 0 {
-				url = "/history/airport" + qSplit[0]
-			}
-		}
+	// need to use Regex in order to have the escape characters be valid for the split
+	splitexp1 := regexp.MustCompile(`<a .*\"/history/airport.*`)
+	urlPull := splitexp1.FindAllString(string(sbytes), -1)
+	if !(len(urlPull) > 0) {
+		log.Println("splitexp1.FindAllString found nothing")
 	}
-	url = WunHistBase + url
-
-	if err := os.MkdirAll(ROOT+"/data", 0755); err != nil {
-		fmt.Println(err)
+	subexp := regexp.MustCompile(`/.*.html`)
+	urlPull2 := subexp.FindString(urlPull[0])
+	if urlPull2 == "" {
+		log.Println("subexp.FindString found nothing")
+	}
+	url = WunHistBase + strings.Replace(urlPull2, "MonthlyCalendar", "DailyHistory", -1)
+	if err := os.MkdirAll(ROOT+"/data/", 0755); err != nil {
+		log.Println(err)
 	}
 
 	if err := os.MkdirAll(ROOT+"/data/"+Geolocation, 0755); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 
 	if err := os.MkdirAll(ROOT+"/data/"+Geolocation+"/html", 0755); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 
 	if err := os.MkdirAll(ROOT+"/data/"+Geolocation+"/json", 0755); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 
 	// write URL to gzip file
 	if err := writeGzip(ROOT+"/data/"+Geolocation+"/url.txt", []byte(url), 0755); err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 
-	fmt.Println(Geolocation + " url created...")
+	log.Println(Geolocation + " url created...")
 	return url
 }
 
@@ -396,7 +393,6 @@ func createRoutine(c chan string, client *http.Client, urlMap map[string]string,
 		}
 		sOld = sNext
 		startTime = startTime.Add(time.Duration(24) * time.Hour)
-
 	}
 	c <- (Geolocation + " Complete\n" + strconv.Itoa(iFile) + " files read\n" + strconv.Itoa(iNet) +
 		" files downloaded\nElapsed: " + time.Now().Sub(endTime).String())
@@ -408,6 +404,7 @@ func main() {
 	geoMap := getLocations()
 	urlMap := make(map[string]string)
 	for geo, record := range geoMap {
+		log.Println("creating url for " + geo)
 		urlMap[geo] = createUrl(client, geo, record)
 
 	}
@@ -421,7 +418,7 @@ func main() {
 	}
 	for {
 		if threads <= 0 {
-			fmt.Println("Done with all Geolocations")
+			fmt.Println("Done with all locations")
 			break
 
 		}
